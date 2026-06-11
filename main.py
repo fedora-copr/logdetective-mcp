@@ -2,7 +2,8 @@ from mcp.server import FastMCP
 
 
 def main():
-    raise NotImplementedError
+    mcp = FastMCP("Log Detective")
+    mcp.run()
 
 
 if __name__ == "__main__":
