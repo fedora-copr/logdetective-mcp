@@ -16,3 +16,11 @@ dependencies = [
     "mcp>=1.27.2",
     "pydantic>=2.13.4",
 ]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Topic :: System :: Logging",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
