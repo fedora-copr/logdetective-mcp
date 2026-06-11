@@ -1,0 +1,18 @@
+[project]
+name = "logdetective-mcp"
+version = "0.1.0"
+description = "Log Detective MCP server"
+readme = "README.md"
+license = "Apache-2.0"
+license-files = [
+  "LICENSE"
+  ]
+requires-python = ">=3.11"
+authors = [
+    { "name" = "Jiri Podivin", "email" = "jpodivin@redhat.com" }
+  ]
+dependencies = [
+    "drain3-improved>=0.10.0",
+    "mcp>=1.27.2",
+    "pydantic>=2.13.4",
+]
