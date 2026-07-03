@@ -15,13 +15,24 @@ class Snippet(BaseModel):
     text: str = Field(description="Extracted log snippet text.")
 
 
+def _sanitize_source(source: str | None) -> str | None:
+    """Replace 'None' strings with `None` value."""
+    if isinstance(source, str) and source.lower().strip() == "none":
+        return None
+    return source
+
+
 def _read_log_source(
     log_text: str | None = None,
     log_path: str | None = None,
     log_url: str | None = None,
 ) -> str:
     """Resolve log content from exactly one of the three sources."""
-    sources = [s for s in (log_text, log_path, log_url) if s is not None]
+    log_text = _sanitize_source(log_text)
+    log_path = _sanitize_source(log_path)
+    log_url = _sanitize_source(log_url)
+
+    sources = [s for s in [log_text, log_path, log_url] if s is not None]
     if len(sources) != 1:
         raise ValueError(
             "Exactly one of log_text, log_path, or log_url must be provided."
