@@ -1,6 +1,20 @@
 import pytest
+from unittest.mock import patch
 
-from logdetective_mcp.main import Snippet, _read_log_source, extract_log_snippets
+from logdetective_mcp.main import (
+    Snippet,
+    _read_log_source,
+    extract_log_snippets,
+    _sanitize_source,
+)
+
+valid_sources = [
+    "/valid/path/to.log",
+    "https://valid.url/build.log",
+    "This is also a valid log.",
+    None,
+]
+none_sources = ["none", "None", " None", "   none   "]
 
 
 class TestReadLogSource:
@@ -67,3 +81,42 @@ class TestExtractLogSnippets:
         f.write_text("ERROR build failed\nWARN low disk")
         result = extract_log_snippets(log_path=str(f))
         assert len(result) == 2
+
+
+class TestSourceSanitization:
+    @pytest.mark.parametrize("source", valid_sources)
+    def test_valid_input(self, source):
+        assert _sanitize_source(source=source) == source
+
+    @pytest.mark.parametrize("source", none_sources)
+    def test_coercion_to_none(self, source):
+        assert _sanitize_source(source=source) is None
+
+    @pytest.mark.parametrize("none_str", none_sources)
+    def test_mixed_calling_log_text(self, none_str):
+        assert (
+            _read_log_source(log_text="hello", log_path=none_str, log_url=none_str)
+            == "hello"
+        )
+
+    @pytest.mark.parametrize("none_str", none_sources)
+    def test_mixed_calling_log_path(self, tmp_path, none_str):
+        f = tmp_path / "test.log"
+        f.write_text("log from file")
+        assert (
+            _read_log_source(log_text=none_str, log_path=str(f), log_url=none_str)
+            == "log from file"
+        )
+
+    @pytest.mark.parametrize("none_str", none_sources)
+    @patch("urllib.request.urlopen")
+    def test_mixed_calling_log_url(self, mock, none_str):
+        mock.return_value.__enter__.return_value.read.return_value.decode.return_value = "url log"
+        assert (
+            _read_log_source(
+                log_text=none_str,
+                log_path=none_str,
+                log_url="https://example.com/build.log",
+            )
+            == "url log"
+        )
