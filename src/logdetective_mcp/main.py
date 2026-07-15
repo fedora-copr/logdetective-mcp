@@ -5,7 +5,7 @@ from urllib.parse import urlparse
 from mcp.server import FastMCP
 from pydantic import BaseModel, Field
 
-from logdetective_mcp.extractor import DrainExtractor
+from logdetective_mcp.extractor import DrainExtractor, PythonTracebackExtractor
 
 mcp = FastMCP("Log Detective")
 
@@ -91,6 +91,37 @@ def extract_log_snippets(
     )
     raw_snippets = extractor(log)
     return [Snippet(line_number=line_no, text=text) for line_no, text in raw_snippets]
+
+
+@mcp.tool()
+def extract_python_tracebacks(
+    log_text: str | None = None,
+    log_path: str | None = None,
+    log_url: str | None = None,
+    max_traceback_len: int = 2000,
+    skip_patterns: dict[str, str] | None = None,
+) -> list[Snippet]:
+    """Extract Python tracebacks using specialized heuristic.
+
+    Analyzes log text and extracts unbroken Python tracebacks.
+    Traces are truncated to `max_traceback_len` characters.
+
+    Exactly one of log_text, log_path, or log_url must be provided.
+
+    Args:
+        log_text: Raw log text to analyze.
+        log_path: Path to a log file on disk.
+        log_url: HTTP(S) URL to fetch log content from.
+        max_traceback_len: Maximum character length per extracted traceback.
+        skip_patterns: Optional dict mapping names to regex patterns.
+            Chunks matching any pattern are excluded.
+    """
+    log = _read_log_source(log_text, log_path, log_url)
+    extractor = PythonTracebackExtractor(
+        skip_patterns=skip_patterns, max_snippet_len=max_traceback_len
+    )
+    tracebacks = extractor(log)
+    return [Snippet(line_number=line_no, text=text) for line_no, text in tracebacks]
 
 
 def main():
