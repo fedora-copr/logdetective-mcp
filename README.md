@@ -82,6 +82,21 @@ Optional parameters:
 
 Returns a list of `Snippet` objects, each with `line_number` (position in the original log) and `text` (the extracted snippet content).
 
+### Compressed file support
+
+Both tools transparently decompress archived log files. Supported formats:
+
+- **Single-file compression:** `.gz`, `.bz2`, `.xz`, `.lzma`
+- **Archives:** `.zip`, `.tar`, `.tar.gz`, `.tar.bz2`, `.tar.xz`
+
+Format is detected from the file extension (or URL path). Archives must contain exactly one file.
+
+**Zip bomb protection** is enforced via:
+- Maximum decompressed size of 100 MB
+- Maximum compression ratio of 100:1
+- Pre-check of declared sizes in zip/tar headers
+- No recursive decompression (nested archives are not unpacked)
+
 ## Contributing
 
 All changes to this repository must pass pre-commit checks and tests.
