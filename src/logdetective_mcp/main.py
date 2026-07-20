@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 from mcp.server import FastMCP
 from pydantic import BaseModel, Field
 
+from logdetective_mcp.decompress import decompress_if_needed
 from logdetective_mcp.extractor import DrainExtractor, PythonTracebackExtractor
 
 mcp = FastMCP("Log Detective")
@@ -27,7 +28,12 @@ def _read_log_source(
     log_path: str | None = None,
     log_url: str | None = None,
 ) -> str:
-    """Resolve log content from exactly one of the three sources."""
+    """Resolve log content from exactly one of the three sources.
+
+    Compressed files (.gz, .bz2, .xz, .zip, .tar, .tar.gz, .tar.bz2,
+    .tar.xz) are decompressed transparently. Zip bomb protection is
+    enforced by the decompress module.
+    """
     log_text = _sanitize_source(log_text)
     log_path = _sanitize_source(log_path)
     log_url = _sanitize_source(log_url)
@@ -45,14 +51,16 @@ def _read_log_source(
         path = Path(log_path)
         if not path.is_file():
             raise FileNotFoundError(f"Log file not found: {log_path}")
-        return path.read_text()
+        raw = path.read_bytes()
+        return decompress_if_needed(raw, str(path))
 
     if log_url is not None:
         parsed = urlparse(log_url)
         if parsed.scheme not in ("http", "https"):
             raise ValueError(f"Unsupported URL scheme: {parsed.scheme}")
         with urllib.request.urlopen(log_url) as resp:  # noqa: S310
-            return resp.read().decode()
+            raw = resp.read()
+        return decompress_if_needed(raw, log_url)
 
     raise ValueError("Exactly one of log_text, log_path, or log_url must be provided.")
 
@@ -74,6 +82,11 @@ def extract_log_snippets(
 
     Exactly one of log_text, log_path, or log_url must be provided.
 
+    Compressed files (.gz, .bz2, .xz, .zip, .tar, .tar.gz, .tar.bz2,
+    .tar.xz) are decompressed transparently. Archives must contain
+    exactly one file. Zip bomb protection limits decompressed output
+    to 100 MB and rejects compression ratios above 100:1.
+
     Args:
         log_text: Raw log text to analyze.
         log_path: Path to a log file on disk.
@@ -83,7 +96,11 @@ def extract_log_snippets(
         skip_patterns: Optional dict mapping names to regex patterns.
             Chunks matching any pattern are excluded before clustering.
     """
-    log = _read_log_source(log_text, log_path, log_url)
+    log = _read_log_source(
+        log_text,
+        log_path,
+        log_url,
+    )
     extractor = DrainExtractor(
         max_clusters=max_clusters,
         max_snippet_len=max_snippet_len,
@@ -108,6 +125,11 @@ def extract_python_tracebacks(
 
     Exactly one of log_text, log_path, or log_url must be provided.
 
+    Compressed files (.gz, .bz2, .xz, .zip, .tar, .tar.gz, .tar.bz2,
+    .tar.xz) are decompressed transparently. Archives must contain
+    exactly one file. Zip bomb protection limits decompressed output
+    to 100 MB and rejects compression ratios above 100:1.
+
     Args:
         log_text: Raw log text to analyze.
         log_path: Path to a log file on disk.
@@ -116,7 +138,11 @@ def extract_python_tracebacks(
         skip_patterns: Optional dict mapping names to regex patterns.
             Chunks matching any pattern are excluded.
     """
-    log = _read_log_source(log_text, log_path, log_url)
+    log = _read_log_source(
+        log_text,
+        log_path,
+        log_url,
+    )
     extractor = PythonTracebackExtractor(
         skip_patterns=skip_patterns, max_snippet_len=max_traceback_len
     )

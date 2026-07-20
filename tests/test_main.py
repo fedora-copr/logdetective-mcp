@@ -1,6 +1,10 @@
+import gzip
+import io
+
 import pytest
 from unittest.mock import patch
 
+from logdetective_mcp.decompress import DecompressionError, decompress_if_needed
 from logdetective_mcp.main import (
     Snippet,
     _read_log_source,
@@ -42,6 +46,39 @@ class TestReadLogSource:
         with pytest.raises(ValueError, match="Unsupported URL scheme"):
             _read_log_source(log_url="ftp://example.com/log")
 
+    def test_log_path_gzipped(self, tmp_path):
+        content = "ERROR build failed\nWARN low disk"
+        f = tmp_path / "build.log.gz"
+        buf = io.BytesIO()
+        with gzip.GzipFile(fileobj=buf, mode="wb") as gz:
+            gz.write(content.encode())
+        f.write_bytes(buf.getvalue())
+        assert _read_log_source(log_path=str(f)) == content
+
+    def test_log_path_plain_text_unchanged(self, tmp_path):
+        f = tmp_path / "test.log"
+        f.write_text("plain text log")
+        assert _read_log_source(log_path=str(f)) == "plain text log"
+
+    @patch("urllib.request.urlopen")
+    def test_log_url_gzipped(self, mock):
+        content = "ERROR from url"
+        buf = io.BytesIO()
+        with gzip.GzipFile(fileobj=buf, mode="wb") as gz:
+            gz.write(content.encode())
+        compressed = buf.getvalue()
+        mock.return_value.__enter__.return_value.read.return_value = compressed
+        result = _read_log_source(log_url="https://example.com/build.log.gz")
+        assert result == content
+
+    def test_decompression_error_propagates(self):
+        big_data = b"A" * 2000
+        buf = io.BytesIO()
+        with gzip.GzipFile(fileobj=buf, mode="wb") as gz:
+            gz.write(big_data)
+        with pytest.raises(DecompressionError):
+            decompress_if_needed(buf.getvalue(), "big.log.gz", max_bytes=100)
+
 
 class TestExtractLogSnippets:
     def test_returns_snippet_objects(self):
@@ -82,6 +119,19 @@ class TestExtractLogSnippets:
         result = extract_log_snippets(log_path=str(f))
         assert len(result) == 2
 
+    def test_from_gzipped_file(self, tmp_path):
+        content = "ERROR build failed\nWARN low disk"
+        f = tmp_path / "build.log.gz"
+        buf = io.BytesIO()
+        with gzip.GzipFile(fileobj=buf, mode="wb") as gz:
+            gz.write(content.encode())
+        f.write_bytes(buf.getvalue())
+        result = extract_log_snippets(log_path=str(f))
+        assert len(result) == 2
+        texts = [s.text for s in result]
+        assert any("ERROR" in t for t in texts)
+        assert any("WARN" in t for t in texts)
+
 
 class TestSourceSanitization:
     @pytest.mark.parametrize("source", valid_sources)
@@ -111,7 +161,7 @@ class TestSourceSanitization:
     @pytest.mark.parametrize("none_str", none_sources)
     @patch("urllib.request.urlopen")
     def test_mixed_calling_log_url(self, mock, none_str):
-        mock.return_value.__enter__.return_value.read.return_value.decode.return_value = "url log"
+        mock.return_value.__enter__.return_value.read.return_value = b"url log"
         assert (
             _read_log_source(
                 log_text=none_str,
