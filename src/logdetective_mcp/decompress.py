@@ -9,6 +9,8 @@ import zipfile
 from typing import IO
 from urllib.parse import urlparse
 
+from logdetective_mcp.exceptions import DecompressionError
+
 DEFAULT_MAX_DECOMPRESSED_BYTES = 100 * 1024 * 1024  # 100 MB
 DEFAULT_MAX_COMPRESSION_RATIO = 100.0  # 100:1
 _CHUNK_SIZE = 64 * 1024  # 64 KB
@@ -31,10 +33,6 @@ _SINGLE_EXTENSIONS = {
 
 _TAR_FORMATS = frozenset({"tar", "tar.gz", "tar.bz2", "tar.xz"})
 _STREAM_OPENERS = {"bz2": bz2.BZ2File, "xz": lzma.LZMAFile}
-
-
-class DecompressionError(Exception):
-    """Raised when decompression fails or safety limits are exceeded."""
 
 
 def detect_format(source: str) -> str | None:
@@ -62,7 +60,7 @@ def detect_format(source: str) -> str | None:
     return None
 
 
-def _read_chunks(
+def read_chunks(
     fileobj: IO[bytes] | io.BufferedIOBase,
     compressed_size: int,
     max_bytes: int,
@@ -78,8 +76,7 @@ def _read_chunks(
         total += len(chunk)
         if total > max_bytes:
             raise DecompressionError(
-                f"Decompressed size exceeds limit of {max_bytes} bytes "
-                f"(reached {total} bytes)"
+                f"Size exceeds limit of {max_bytes} bytes (reached {total} bytes)"
             )
         if compressed_size > 0 and total / compressed_size > max_ratio:
             raise DecompressionError(
@@ -97,12 +94,12 @@ def _decompress_stream(
     max_ratio: float,
 ) -> bytes:
     with opener(io.BytesIO(data)) as f:
-        return _read_chunks(f, len(data), max_bytes, max_ratio)
+        return read_chunks(f, len(data), max_bytes, max_ratio)
 
 
 def _decompress_gz(data: bytes, max_bytes: int, max_ratio: float) -> bytes:
     with gzip.GzipFile(fileobj=io.BytesIO(data)) as f:
-        return _read_chunks(f, len(data), max_bytes, max_ratio)
+        return read_chunks(f, len(data), max_bytes, max_ratio)
 
 
 def _decompress_zip(data: bytes, max_bytes: int, max_ratio: float) -> bytes:
@@ -131,7 +128,7 @@ def _decompress_zip(data: bytes, max_bytes: int, max_ratio: float) -> bytes:
 
         try:
             with zf.open(member) as f:
-                return _read_chunks(f, len(data), max_bytes, max_ratio)
+                return read_chunks(f, len(data), max_bytes, max_ratio)
         except zipfile.BadZipFile as e:
             raise DecompressionError(f"Decompression failed with {e}") from e
 
@@ -166,7 +163,7 @@ def _decompress_tar(data: bytes, max_bytes: int, max_ratio: float) -> bytes:
                 f"Cannot extract member '{member.name}' from tar archive"
             )
         with f:
-            return _read_chunks(f, len(data), max_bytes, max_ratio)
+            return read_chunks(f, len(data), max_bytes, max_ratio)
 
 
 def decompress(
@@ -189,12 +186,6 @@ def decompress(
     Raises:
         DecompressionError: If safety limits are exceeded or archive is invalid.
     """
-    if len(data) > max_bytes:
-        raise DecompressionError(
-            f"Compressed input size {len(data)} bytes "
-            f"exceeds limit of {max_bytes} bytes"
-        )
-
     if fmt == "gz":
         return _decompress_gz(data, max_bytes, max_ratio)
     if fmt in _STREAM_OPENERS:
@@ -227,9 +218,9 @@ def decompress_if_needed(
     Raises:
         DecompressionError: If safety limits are exceeded or archive is invalid.
     """
-    fmt = detect_format(source)
-    if fmt is None:
+    compression_fmt = detect_format(source)
+    if compression_fmt is None:
         return data.decode("utf-8", errors="replace")
 
-    decompressed = decompress(data, fmt, max_bytes, max_ratio)
+    decompressed = decompress(data, compression_fmt, max_bytes, max_ratio)
     return decompressed.decode("utf-8", errors="replace")

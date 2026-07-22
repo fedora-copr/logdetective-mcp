@@ -82,6 +82,13 @@ Optional parameters:
 
 Returns a list of `Snippet` objects, each with `line_number` (position in the original log) and `text` (the extracted snippet content).
 
+### Size limits
+
+All downloaded inputs (via `log_url`) are limited to 100 MB regardless of format.
+Downloads are streamed in chunks and aborted as soon as the limit is exceeded.
+
+Archives read via `log_path` are also checked against the 100 MB limit during decompression.
+
 ### Compressed file support
 
 Both tools transparently decompress archived log files. Supported formats:

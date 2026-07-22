@@ -4,9 +4,11 @@ import io
 import pytest
 from unittest.mock import patch
 
-from logdetective_mcp.decompress import DecompressionError, decompress_if_needed
+from logdetective_mcp.decompress import decompress_if_needed
+from logdetective_mcp.exceptions import DecompressionError, DownloadError
 from logdetective_mcp.main import (
     Snippet,
+    _download_with_limit,
     _read_log_source,
     extract_log_snippets,
     _sanitize_source,
@@ -67,7 +69,7 @@ class TestReadLogSource:
         with gzip.GzipFile(fileobj=buf, mode="wb") as gz:
             gz.write(content.encode())
         compressed = buf.getvalue()
-        mock.return_value.__enter__.return_value.read.return_value = compressed
+        mock.return_value.__enter__.return_value.read.side_effect = [compressed, b""]
         result = _read_log_source(log_url="https://example.com/build.log.gz")
         assert result == content
 
@@ -78,6 +80,36 @@ class TestReadLogSource:
             gz.write(big_data)
         with pytest.raises(DecompressionError):
             decompress_if_needed(buf.getvalue(), "big.log.gz", max_bytes=100)
+
+
+class TestSizeLimits:
+    @patch("urllib.request.urlopen")
+    def test_download_exceeds_size_limit(self, mock):
+        big_data = b"A" * 2000
+        mock.return_value.__enter__.return_value.read.side_effect = [
+            big_data,
+        ]
+        with pytest.raises(DownloadError, match="exceeds limit"):
+            _download_with_limit("https://example.com/huge.log", max_bytes=100)
+
+    @patch("urllib.request.urlopen")
+    def test_download_within_size_limit(self, mock):
+        data = b"small log"
+        mock.return_value.__enter__.return_value.read.side_effect = [data, b""]
+        result = _download_with_limit("https://example.com/small.log", max_bytes=1000)
+        assert result == data
+
+    @patch("urllib.request.urlopen")
+    def test_download_chunked_exceeds_limit(self, mock):
+        """Verify limit is enforced across multiple chunks."""
+        chunk = b"A" * 100
+        mock.return_value.__enter__.return_value.read.side_effect = [
+            chunk,
+            chunk,
+            chunk,
+        ]
+        with pytest.raises(DownloadError, match="exceeds limit"):
+            _download_with_limit("https://example.com/big.log", max_bytes=250)
 
 
 class TestExtractLogSnippets:
@@ -161,7 +193,7 @@ class TestSourceSanitization:
     @pytest.mark.parametrize("none_str", none_sources)
     @patch("urllib.request.urlopen")
     def test_mixed_calling_log_url(self, mock, none_str):
-        mock.return_value.__enter__.return_value.read.return_value = b"url log"
+        mock.return_value.__enter__.return_value.read.side_effect = [b"url log", b""]
         assert (
             _read_log_source(
                 log_text=none_str,
