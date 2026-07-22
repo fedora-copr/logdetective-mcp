@@ -5,7 +5,12 @@ from urllib.parse import urlparse
 from mcp.server import FastMCP
 from pydantic import BaseModel, Field
 
-from logdetective_mcp.decompress import decompress_if_needed
+from logdetective_mcp.decompress import (
+    DEFAULT_MAX_DECOMPRESSED_BYTES,
+    decompress_if_needed,
+    read_chunks,
+)
+from logdetective_mcp.exceptions import DecompressionError, DownloadError
 from logdetective_mcp.extractor import DrainExtractor, PythonTracebackExtractor
 
 mcp = FastMCP("Log Detective")
@@ -23,6 +28,17 @@ def _sanitize_source(source: str | None) -> str | None:
     return source
 
 
+def _download_with_limit(url: str, max_bytes: int) -> bytes:
+    """Download URL content in chunks, rejecting responses that exceed *max_bytes*."""
+    with urllib.request.urlopen(url) as resp:  # noqa: S310
+        try:
+            return read_chunks(
+                resp, compressed_size=0, max_bytes=max_bytes, max_ratio=1.0
+            )
+        except DecompressionError as exc:
+            raise DownloadError(str(exc)) from exc
+
+
 def _read_log_source(
     log_text: str | None = None,
     log_path: str | None = None,
@@ -30,9 +46,10 @@ def _read_log_source(
 ) -> str:
     """Resolve log content from exactly one of the three sources.
 
-    Compressed files (.gz, .bz2, .xz, .zip, .tar, .tar.gz, .tar.bz2,
-    .tar.xz) are decompressed transparently. Zip bomb protection is
-    enforced by the decompress module.
+    All downloaded inputs are limited to DEFAULT_MAX_DECOMPRESSED_BYTES (100 MB),
+    regardless of format. Compressed files (.gz, .bz2, .xz, .zip, .tar,
+    .tar.gz, .tar.bz2, .tar.xz) are decompressed transparently with
+    additional zip bomb protection.
     """
     log_text = _sanitize_source(log_text)
     log_path = _sanitize_source(log_path)
@@ -58,8 +75,7 @@ def _read_log_source(
         parsed = urlparse(log_url)
         if parsed.scheme not in ("http", "https"):
             raise ValueError(f"Unsupported URL scheme: {parsed.scheme}")
-        with urllib.request.urlopen(log_url) as resp:  # noqa: S310
-            raw = resp.read()
+        raw = _download_with_limit(log_url, DEFAULT_MAX_DECOMPRESSED_BYTES)
         return decompress_if_needed(raw, log_url)
 
     raise ValueError("Exactly one of log_text, log_path, or log_url must be provided.")
@@ -82,10 +98,10 @@ def extract_log_snippets(
 
     Exactly one of log_text, log_path, or log_url must be provided.
 
+    Downloaded inputs are limited to 100 MB.
     Compressed files (.gz, .bz2, .xz, .zip, .tar, .tar.gz, .tar.bz2,
     .tar.xz) are decompressed transparently. Archives must contain
-    exactly one file. Zip bomb protection limits decompressed output
-    to 100 MB and rejects compression ratios above 100:1.
+    exactly one file. Compression ratios above 100:1 are rejected.
 
     Args:
         log_text: Raw log text to analyze.
@@ -125,10 +141,10 @@ def extract_python_tracebacks(
 
     Exactly one of log_text, log_path, or log_url must be provided.
 
+    Downloaded inputs are limited to 100 MB.
     Compressed files (.gz, .bz2, .xz, .zip, .tar, .tar.gz, .tar.bz2,
     .tar.xz) are decompressed transparently. Archives must contain
-    exactly one file. Zip bomb protection limits decompressed output
-    to 100 MB and rejects compression ratios above 100:1.
+    exactly one file. Compression ratios above 100:1 are rejected.
 
     Args:
         log_text: Raw log text to analyze.

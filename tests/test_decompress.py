@@ -7,8 +7,8 @@ import zipfile
 
 import pytest
 
+from logdetective_mcp.exceptions import DecompressionError
 from logdetective_mcp.decompress import (
-    DecompressionError,
     decompress,
     decompress_if_needed,
     detect_format,
@@ -215,7 +215,7 @@ class TestSafetyLimits:
     def test_max_bytes_exceeded_stream(self, fmt, make_fn):
         big_data = b"A" * 2000
         compressed = make_fn(big_data)
-        with pytest.raises(DecompressionError, match="Decompressed size exceeds limit"):
+        with pytest.raises(DecompressionError, match="Size exceeds limit"):
             decompress(compressed, fmt, max_bytes=100)
 
     def test_max_bytes_exceeded_zip(self):
@@ -238,14 +238,6 @@ class TestSafetyLimits:
         compressed = make_tar("big.log", big_data, compression=compression)
         with pytest.raises(DecompressionError, match="exceeds limit"):
             decompress(compressed, fmt, max_bytes=100)
-
-    # -- compressed input size exceeds limit --
-
-    def test_compressed_input_exceeds_limit(self):
-        big_data = b"A" * 2000
-        compressed = make_gz(big_data)
-        with pytest.raises(DecompressionError, match="Compressed input size"):
-            decompress(compressed, "gz", max_bytes=10)
 
     # -- compression ratio exceeded per format --
 
