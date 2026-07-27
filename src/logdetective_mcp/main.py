@@ -30,7 +30,7 @@ def _sanitize_source(source: str | None) -> str | None:
 
 def _download_with_limit(url: str, max_bytes: int) -> bytes:
     """Download URL content in chunks, rejecting responses that exceed *max_bytes*."""
-    with urllib.request.urlopen(url) as resp:  # noqa: S310
+    with urllib.request.urlopen(url, timeout=30) as resp:  # noqa: S310
         try:
             return read_chunks(
                 resp, compressed_size=0, max_bytes=max_bytes, max_ratio=1.0
