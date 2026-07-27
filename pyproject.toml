@@ -1,6 +1,6 @@
 [project]
 name = "logdetective-mcp"
-version = "0.3.0"
+version = "0.3.1"
 description = "Log Detective MCP server"
 readme = "README.md"
 license = "Apache-2.0"
