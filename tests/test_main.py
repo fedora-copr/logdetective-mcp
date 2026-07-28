@@ -11,7 +11,6 @@ from logdetective_mcp.main import (
     _download_with_limit,
     _read_log_source,
     extract_log_snippets,
-    _sanitize_source,
 )
 
 valid_sources = [
@@ -125,7 +124,8 @@ class TestExtractLogSnippets:
         assert snippet.text == "ERROR something broke"
 
     def test_empty_input(self):
-        assert extract_log_snippets(log_text="") == []
+        with pytest.raises(ValueError):
+            assert extract_log_snippets(log_text="")
 
     def test_deduplication(self):
         log = "\n".join(["ERROR same message"] * 5)
@@ -163,42 +163,3 @@ class TestExtractLogSnippets:
         texts = [s.text for s in result]
         assert any("ERROR" in t for t in texts)
         assert any("WARN" in t for t in texts)
-
-
-class TestSourceSanitization:
-    @pytest.mark.parametrize("source", valid_sources)
-    def test_valid_input(self, source):
-        assert _sanitize_source(source=source) == source
-
-    @pytest.mark.parametrize("source", none_sources)
-    def test_coercion_to_none(self, source):
-        assert _sanitize_source(source=source) is None
-
-    @pytest.mark.parametrize("none_str", none_sources)
-    def test_mixed_calling_log_text(self, none_str):
-        assert (
-            _read_log_source(log_text="hello", log_path=none_str, log_url=none_str)
-            == "hello"
-        )
-
-    @pytest.mark.parametrize("none_str", none_sources)
-    def test_mixed_calling_log_path(self, tmp_path, none_str):
-        f = tmp_path / "test.log"
-        f.write_text("log from file")
-        assert (
-            _read_log_source(log_text=none_str, log_path=str(f), log_url=none_str)
-            == "log from file"
-        )
-
-    @pytest.mark.parametrize("none_str", none_sources)
-    @patch("urllib.request.urlopen")
-    def test_mixed_calling_log_url(self, mock, none_str):
-        mock.return_value.__enter__.return_value.read.side_effect = [b"url log", b""]
-        assert (
-            _read_log_source(
-                log_text=none_str,
-                log_path=none_str,
-                log_url="https://example.com/build.log",
-            )
-            == "url log"
-        )

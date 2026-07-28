@@ -21,13 +21,6 @@ class Snippet(BaseModel):
     text: str = Field(description="Extracted log snippet text.")
 
 
-def _sanitize_source(source: str | None) -> str | None:
-    """Replace 'None' strings with `None` value."""
-    if isinstance(source, str) and source.lower().strip() == "none":
-        return None
-    return source
-
-
 def _download_with_limit(url: str, max_bytes: int) -> bytes:
     """Download URL content in chunks, rejecting responses that exceed *max_bytes*."""
     with urllib.request.urlopen(url, timeout=30) as resp:  # noqa: S310
@@ -40,9 +33,9 @@ def _download_with_limit(url: str, max_bytes: int) -> bytes:
 
 
 def _read_log_source(
-    log_text: str | None = None,
-    log_path: str | None = None,
-    log_url: str | None = None,
+    log_text: str = "",
+    log_path: str = "",
+    log_url: str = "",
 ) -> str:
     """Resolve log content from exactly one of the three sources.
 
@@ -51,27 +44,24 @@ def _read_log_source(
     .tar.gz, .tar.bz2, .tar.xz) are decompressed transparently with
     additional zip bomb protection.
     """
-    log_text = _sanitize_source(log_text)
-    log_path = _sanitize_source(log_path)
-    log_url = _sanitize_source(log_url)
 
-    sources = [s for s in [log_text, log_path, log_url] if s is not None]
+    sources = [s for s in [log_text, log_path, log_url] if s]
     if len(sources) != 1:
         raise ValueError(
             "Exactly one of log_text, log_path, or log_url must be provided."
         )
 
-    if log_text is not None:
+    if log_text:
         return log_text
 
-    if log_path is not None:
+    if log_path:
         path = Path(log_path)
         if not path.is_file():
             raise FileNotFoundError(f"Log file not found: {log_path}")
         raw = path.read_bytes()
         return decompress_if_needed(raw, str(path))
 
-    if log_url is not None:
+    if log_url:
         parsed = urlparse(log_url)
         if parsed.scheme not in ("http", "https"):
             raise ValueError(f"Unsupported URL scheme: {parsed.scheme}")
@@ -83,12 +73,12 @@ def _read_log_source(
 
 @mcp.tool()
 def extract_log_snippets(
-    log_text: str | None = None,
-    log_path: str | None = None,
-    log_url: str | None = None,
+    log_text: str = "",
+    log_path: str = "",
+    log_url: str = "",
     max_clusters: int = 8,
     max_snippet_len: int = 2000,
-    skip_patterns: dict[str, str] | None = None,
+    skip_patterns: dict[str, str] = {},
 ) -> list[Snippet]:
     """Extract representative log snippets using Drain3 clustering.
 
@@ -128,11 +118,11 @@ def extract_log_snippets(
 
 @mcp.tool()
 def extract_python_tracebacks(
-    log_text: str | None = None,
-    log_path: str | None = None,
-    log_url: str | None = None,
+    log_text: str = "",
+    log_path: str = "",
+    log_url: str = "",
     max_traceback_len: int = 2000,
-    skip_patterns: dict[str, str] | None = None,
+    skip_patterns: dict[str, str] = {},
 ) -> list[Snippet]:
     """Extract Python tracebacks using specialized heuristic.
 
