@@ -140,7 +140,7 @@ class TestExtractLogSnippets:
 
     def test_skip_patterns_forwarded(self):
         log = "DEBUG noise\nERROR real problem"
-        result = extract_log_snippets(log_text=log, skip_patterns={"debug": "DEBUG.*"})
+        result = extract_log_snippets(log_text=log, skip_patterns=["DEBUG.*"])
         texts = [s.text for s in result]
         assert not any("DEBUG" in t for t in texts)
         assert any("ERROR" in t for t in texts)

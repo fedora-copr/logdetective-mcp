@@ -78,7 +78,7 @@ def extract_log_snippets(
     log_url: str = "",
     max_clusters: int = 8,
     max_snippet_len: int = 2000,
-    skip_patterns: dict[str, str] = {},
+    skip_patterns: list[str] = [],
 ) -> list[Snippet]:
     """Extract representative log snippets using Drain3 clustering.
 
@@ -99,7 +99,7 @@ def extract_log_snippets(
         log_url: HTTP(S) URL to fetch log content from.
         max_clusters: Maximum number of clusters/snippets to extract.
         max_snippet_len: Maximum character length per snippet chunk.
-        skip_patterns: Optional dict mapping names to regex patterns.
+        skip_patterns: Optional list of regex patterns.
             Chunks matching any pattern are excluded before clustering.
     """
     log = _read_log_source(
@@ -122,7 +122,7 @@ def extract_python_tracebacks(
     log_path: str = "",
     log_url: str = "",
     max_traceback_len: int = 2000,
-    skip_patterns: dict[str, str] = {},
+    skip_patterns: list[str] = [],
 ) -> list[Snippet]:
     """Extract Python tracebacks using specialized heuristic.
 
@@ -141,7 +141,7 @@ def extract_python_tracebacks(
         log_path: Path to a log file on disk.
         log_url: HTTP(S) URL to fetch log content from.
         max_traceback_len: Maximum character length per extracted traceback.
-        skip_patterns: Optional dict mapping names to regex patterns.
+        skip_patterns: Optional list of regex patterns.
             Chunks matching any pattern are excluded.
     """
     log = _read_log_source(
