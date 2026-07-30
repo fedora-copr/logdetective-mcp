@@ -55,15 +55,18 @@ class Extractor:
     """Base extractor class"""
 
     def __init__(
-        self, skip_patterns: dict[str, str] | None = None, max_snippet_len: int = 2000
+        self, skip_patterns: list[str] | None = None, max_snippet_len: int = 2000
     ) -> None:
-        self._skip_patterns: dict[str, re.Pattern] = {}
+        self._skip_patterns: list[re.Pattern] = []
 
         if skip_patterns:
-            self._skip_patterns: dict[str, re.Pattern] = {
-                name: re.compile(pattern, re.DOTALL)
-                for name, pattern in skip_patterns.items()
-            }
+            for pattern in skip_patterns:
+                try:
+                    self._skip_patterns.append(re.compile(pattern, re.DOTALL))
+                except re.error as exc:
+                    raise ValueError(
+                        f"Invalid regex in skip_patterns: {pattern!r}: {exc}"
+                    ) from exc
         if max_snippet_len < 0:
             raise ValueError(f"`max_snippet_len` set to value {max_snippet_len} < 0")
         self.max_snippet_len: int = max_snippet_len
@@ -74,7 +77,7 @@ class Extractor:
         return [
             (line_no, text)
             for line_no, text in chunks
-            if not any(p.match(text) for p in self._skip_patterns.values())
+            if not any(p.search(text) for p in self._skip_patterns)
         ]
 
 
@@ -85,7 +88,7 @@ class DrainExtractor(Extractor):
         self,
         max_clusters: int = 8,
         max_snippet_len: int = 2000,
-        skip_patterns: dict[str, str] | None = None,
+        skip_patterns: list[str] | None = None,
     ):
         super().__init__(skip_patterns=skip_patterns, max_snippet_len=max_snippet_len)
 

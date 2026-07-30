@@ -78,7 +78,7 @@ Optional parameters:
 |---|---|---|---|
 | `max_clusters` | `int` | 8 | Maximum number of snippets to extract. |
 | `max_snippet_len` | `int` | 2000 | Maximum character length per snippet. |
-| `skip_patterns` | `dict[str, str]` | `null` | Map of names to regex patterns. Matching chunks are excluded before clustering. |
+| `skip_patterns` | `list[str]` | `null` | List of regex patterns. Chunks matching any pattern are excluded before clustering. |
 
 Returns a list of `Snippet` objects, each with `line_number` (position in the original log) and `text` (the extracted snippet content).
 

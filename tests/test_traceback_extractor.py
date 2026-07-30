@@ -1,3 +1,6 @@
+import re
+
+import pytest
 from logdetective_mcp.extractor import Extractor, PythonTracebackExtractor
 
 
@@ -129,11 +132,11 @@ class TestExtractorBase:
     def test_init_defaults(self):
         extractor = Extractor()
         assert extractor.max_snippet_len == 2000
-        assert extractor._skip_patterns == {}
+        assert extractor._skip_patterns == []
 
     def test_init_with_skip_patterns(self):
-        extractor = Extractor(skip_patterns={"noise": "DEBUG.*"})
-        assert "noise" in extractor._skip_patterns
+        extractor = Extractor(skip_patterns=["DEBUG.*"])
+        assert re.compile("DEBUG.*", re.DOTALL) in extractor._skip_patterns
 
     def test_init_custom_snippet_len(self):
         extractor = Extractor(max_snippet_len=500)
@@ -145,10 +148,20 @@ class TestExtractorBase:
         assert extractor._filter_patterns(chunks) == chunks
 
     def test_filter_patterns_removes_match(self):
-        extractor = Extractor(skip_patterns={"debug": "DEBUG.*"})
+        extractor = Extractor(skip_patterns=["DEBUG.*"])
         chunks = [(1, "DEBUG noise"), (2, "ERROR real")]
         result = extractor._filter_patterns(chunks)
         assert result == [(2, "ERROR real")]
+
+    def test_filter_patterns_searches_not_just_start(self):
+        extractor = Extractor(skip_patterns=["ERROR"])
+        chunks = [(1, "prefix ERROR suffix"), (2, "clean line")]
+        result = extractor._filter_patterns(chunks)
+        assert result == [(2, "clean line")]
+
+    def test_invalid_regex_raises_valueerror(self):
+        with pytest.raises(ValueError, match="Invalid regex"):
+            Extractor(skip_patterns=["[invalid"])
 
 
 class TestPythonTracebackExtractor:
@@ -226,17 +239,13 @@ class TestPythonTracebackExtractor:
         assert "TypeError: oops" in result[0][1]
 
     def test_skip_patterns_filter(self):
-        extractor = PythonTracebackExtractor(
-            skip_patterns={"fnf": ".*FileNotFoundError.*"}
-        )
+        extractor = PythonTracebackExtractor(skip_patterns=[".*FileNotFoundError.*"])
         result = extractor(PYTHON_SIMPLE_TB)
         assert result == []
 
     def test_skip_patterns_partial(self):
         log = f"INFO first\n{PYTHON_SIMPLE_TB}\nINFO middle\n{PYTHON_LONGER_TB}"
-        extractor = PythonTracebackExtractor(
-            skip_patterns={"fnf": ".*FileNotFoundError.*"}
-        )
+        extractor = PythonTracebackExtractor(skip_patterns=[".*FileNotFoundError.*"])
         result = extractor(log)
         assert len(result) == 1
         assert "ValueError: Invalid input" in result[0][1]
