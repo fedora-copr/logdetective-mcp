@@ -3,4 +3,4 @@ class DecompressionError(Exception):
 
 
 class DownloadError(Exception):
-    """Raised on failed download"""
+    """Raised on failed download: HTTP errors, DNS/connection failures, timeouts, or malformed URLs."""

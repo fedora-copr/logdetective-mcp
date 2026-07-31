@@ -1,5 +1,7 @@
 import gzip
+import http.client
 import io
+import urllib.error
 
 import pytest
 from unittest.mock import patch
@@ -61,7 +63,7 @@ class TestReadLogSource:
         f.write_text("plain text log")
         assert _read_log_source(log_path=str(f)) == "plain text log"
 
-    @patch("urllib.request.urlopen")
+    @patch("logdetective_mcp.main.urllib.request.urlopen")
     def test_log_url_gzipped(self, mock):
         content = "ERROR from url"
         buf = io.BytesIO()
@@ -82,7 +84,7 @@ class TestReadLogSource:
 
 
 class TestSizeLimits:
-    @patch("urllib.request.urlopen")
+    @patch("logdetective_mcp.main.urllib.request.urlopen")
     def test_download_exceeds_size_limit(self, mock):
         big_data = b"A" * 2000
         mock.return_value.__enter__.return_value.read.side_effect = [
@@ -91,14 +93,14 @@ class TestSizeLimits:
         with pytest.raises(DownloadError, match="exceeds limit"):
             _download_with_limit("https://example.com/huge.log", max_bytes=100)
 
-    @patch("urllib.request.urlopen")
+    @patch("logdetective_mcp.main.urllib.request.urlopen")
     def test_download_within_size_limit(self, mock):
         data = b"small log"
         mock.return_value.__enter__.return_value.read.side_effect = [data, b""]
         result = _download_with_limit("https://example.com/small.log", max_bytes=1000)
         assert result == data
 
-    @patch("urllib.request.urlopen")
+    @patch("logdetective_mcp.main.urllib.request.urlopen")
     def test_download_chunked_exceeds_limit(self, mock):
         """Verify limit is enforced across multiple chunks."""
         chunk = b"A" * 100
@@ -109,6 +111,57 @@ class TestSizeLimits:
         ]
         with pytest.raises(DownloadError, match="exceeds limit"):
             _download_with_limit("https://example.com/big.log", max_bytes=250)
+
+
+class TestDownloadErrors:
+    @patch("logdetective_mcp.main.urllib.request.urlopen")
+    def test_http_error(self, mock):
+        mock.side_effect = urllib.error.HTTPError(
+            "https://example.com/log", 404, "Not Found", {}, None
+        )
+        with pytest.raises(DownloadError, match="HTTP 404"):
+            _download_with_limit("https://example.com/log", max_bytes=1000)
+
+    @patch("logdetective_mcp.main.urllib.request.urlopen")
+    def test_url_error(self, mock):
+        mock.side_effect = urllib.error.URLError("Name or service not known")
+        with pytest.raises(DownloadError, match="Failed to fetch"):
+            _download_with_limit("https://example.com/log", max_bytes=1000)
+
+    @patch("logdetective_mcp.main.urllib.request.urlopen")
+    def test_timeout_error(self, mock):
+        """TimeoutError is only reachable during resp.read(), not urlopen()."""
+        mock.return_value.__enter__.return_value.read.side_effect = TimeoutError(
+            "timed out"
+        )
+        with pytest.raises(DownloadError, match="Timeout for"):
+            _download_with_limit("https://example.com/log", max_bytes=1000)
+
+    @patch("logdetective_mcp.main.urllib.request.urlopen")
+    def test_connection_refused(self, mock):
+        mock.side_effect = ConnectionRefusedError("Connection refused")
+        with pytest.raises(DownloadError, match="Connection error"):
+            _download_with_limit("https://example.com/log", max_bytes=1000)
+
+    @patch("logdetective_mcp.main.urllib.request.urlopen")
+    def test_incomplete_read(self, mock):
+        mock.return_value.__enter__.return_value.read.side_effect = (
+            http.client.IncompleteRead(b"partial", 1000)
+        )
+        with pytest.raises(DownloadError, match="Connection error"):
+            _download_with_limit("https://example.com/log", max_bytes=1000)
+
+    @patch("logdetective_mcp.main.urllib.request.urlopen")
+    def test_malformed_url_value_error(self, mock):
+        mock.side_effect = ValueError("Invalid IPv6 URL")
+        with pytest.raises(DownloadError, match="Invalid request"):
+            _download_with_limit("https://[invalid/log", max_bytes=1000)
+
+    @patch("logdetective_mcp.main.urllib.request.urlopen")
+    def test_invalid_url(self, mock):
+        mock.side_effect = http.client.InvalidURL("nonnumeric port")
+        with pytest.raises(DownloadError, match="Invalid request"):
+            _download_with_limit("https://host:notaport/log", max_bytes=1000)
 
 
 class TestExtractLogSnippets:

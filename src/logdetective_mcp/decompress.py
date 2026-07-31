@@ -4,6 +4,7 @@ import bz2
 import gzip
 import io
 import lzma
+import zlib
 import tarfile
 import zipfile
 from typing import IO
@@ -32,7 +33,10 @@ _SINGLE_EXTENSIONS = {
 }
 
 _TAR_FORMATS = frozenset({"tar", "tar.gz", "tar.bz2", "tar.xz"})
-_STREAM_OPENERS = {"bz2": bz2.BZ2File, "xz": lzma.LZMAFile}
+_STREAM_OPENERS: dict[str, type] = {
+    "bz2": bz2.BZ2File,
+    "xz": lzma.LZMAFile,
+}
 
 
 def detect_format(source: str) -> str | None:
@@ -93,13 +97,19 @@ def _decompress_stream(
     max_bytes: int,
     max_ratio: float,
 ) -> bytes:
-    with opener(io.BytesIO(data)) as f:
-        return read_chunks(f, len(data), max_bytes, max_ratio)
+    try:
+        with opener(io.BytesIO(data)) as f:
+            return read_chunks(f, len(data), max_bytes, max_ratio)
+    except (EOFError, OSError, lzma.LZMAError) as e:
+        raise DecompressionError(f"Decompression failed: {e}") from e
 
 
 def _decompress_gz(data: bytes, max_bytes: int, max_ratio: float) -> bytes:
-    with gzip.GzipFile(fileobj=io.BytesIO(data)) as f:
-        return read_chunks(f, len(data), max_bytes, max_ratio)
+    try:
+        with gzip.GzipFile(fileobj=io.BytesIO(data)) as f:
+            return read_chunks(f, len(data), max_bytes, max_ratio)
+    except (zlib.error, EOFError, OSError) as e:
+        raise DecompressionError(f"Corrupt gzip data: {e}") from e
 
 
 def _decompress_zip(data: bytes, max_bytes: int, max_ratio: float) -> bytes:
@@ -189,7 +199,8 @@ def decompress(
     if fmt == "gz":
         return _decompress_gz(data, max_bytes, max_ratio)
     if fmt in _STREAM_OPENERS:
-        return _decompress_stream(data, _STREAM_OPENERS[fmt], max_bytes, max_ratio)
+        opener = _STREAM_OPENERS[fmt]
+        return _decompress_stream(data, opener, max_bytes, max_ratio)
     if fmt == "zip":
         return _decompress_zip(data, max_bytes, max_ratio)
     if fmt in _TAR_FORMATS:
