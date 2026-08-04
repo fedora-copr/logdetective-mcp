@@ -366,6 +366,43 @@ class TestSafetyLimits:
         with pytest.raises(DecompressionError, match="Corrupt tar"):
             decompress(b"not a tar", "tar")
 
+    def test_corrupt_gz(self):
+        with pytest.raises(DecompressionError, match="Corrupt gzip"):
+            decompress(b"not gzip data", "gz")
+
+    def test_corrupt_bz2(self):
+        with pytest.raises(DecompressionError, match="Decompression failed"):
+            decompress(b"not bz2 data", "bz2")
+
+    def test_corrupt_xz(self):
+        with pytest.raises(DecompressionError, match="Decompression failed"):
+            decompress(b"not xz data", "xz")
+
+    def test_corrupt_gz_body_zlib_error(self):
+        """Valid gzip header but corrupt compressed body raises zlib.error."""
+        valid_gz = bytearray(make_gz(SAMPLE_BYTES))
+        valid_gz[10] ^= 0xFF
+        with pytest.raises(DecompressionError, match="Corrupt gzip"):
+            decompress(bytes(valid_gz), "gz")
+
+    def test_truncated_gz(self):
+        valid_gz = make_gz(SAMPLE_BYTES)
+        truncated = valid_gz[: len(valid_gz) // 2]
+        with pytest.raises(DecompressionError):
+            decompress(truncated, "gz")
+
+    def test_truncated_bz2(self):
+        valid_bz2 = make_bz2(SAMPLE_BYTES)
+        truncated = valid_bz2[: len(valid_bz2) // 2]
+        with pytest.raises(DecompressionError):
+            decompress(truncated, "bz2")
+
+    def test_truncated_xz(self):
+        valid_xz = make_xz(SAMPLE_BYTES)
+        truncated = valid_xz[: len(valid_xz) // 2]
+        with pytest.raises(DecompressionError):
+            decompress(truncated, "xz")
+
     # -- no recursive decompression --
 
     def test_no_recursive_decompression(self):

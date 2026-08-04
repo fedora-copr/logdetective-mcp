@@ -1,3 +1,5 @@
+import http.client
+import urllib.error
 import urllib.request
 from pathlib import Path
 from urllib.parse import urlparse
@@ -22,14 +24,29 @@ class Snippet(BaseModel):
 
 
 def _download_with_limit(url: str, max_bytes: int) -> bytes:
-    """Download URL content in chunks, rejecting responses that exceed *max_bytes*."""
-    with urllib.request.urlopen(url, timeout=30) as resp:  # noqa: S310
-        try:
+    """Download URL content in chunks, rejecting responses that exceed *max_bytes*.
+
+    Raises:
+        DownloadError: On HTTP errors, network failures, timeouts, malformed
+            URLs, or when the response exceeds *max_bytes*.
+    """
+    try:
+        with urllib.request.urlopen(url, timeout=30) as resp:  # noqa: S310
             return read_chunks(
                 resp, compressed_size=0, max_bytes=max_bytes, max_ratio=1.0
             )
-        except DecompressionError as exc:
-            raise DownloadError(str(exc)) from exc
+    except DecompressionError as exc:
+        raise DownloadError(str(exc)) from exc
+    except urllib.error.HTTPError as exc:
+        raise DownloadError(f"HTTP {exc.code} {exc.reason} for {url}") from exc
+    except urllib.error.URLError as exc:
+        raise DownloadError(f"Failed to fetch {url}: {exc.reason}") from exc
+    except TimeoutError as exc:
+        raise DownloadError(f"Timeout for {url}: {exc}") from exc
+    except (OSError, http.client.RemoteDisconnected, http.client.IncompleteRead) as exc:
+        raise DownloadError(f"Connection error for {url}: {exc}") from exc
+    except (ValueError, http.client.HTTPException) as exc:
+        raise DownloadError(f"Invalid request for {url}: {exc}") from exc
 
 
 def _read_log_source(
