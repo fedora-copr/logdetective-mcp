@@ -111,3 +111,5 @@ All changes to this repository must pass pre-commit checks and tests.
 ```sh
 uv run pytest tests/
 ```
+
+<!-- mcp-name: io.github.fedora-copr/logdetective-mcp -->
