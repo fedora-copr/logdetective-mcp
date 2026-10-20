@@ -79,8 +79,35 @@ Optional parameters:
 | `max_clusters` | `int` | 8 | Maximum number of snippets to extract. |
 | `max_snippet_len` | `int` | 2000 | Maximum character length per snippet. |
 | `skip_patterns` | `list[str]` | `null` | List of regex patterns. Chunks matching any pattern are excluded before clustering. |
+| `context` | `int` | 0 | Number of lines to include before and after each snippet (0-50). |
 
 Returns a list of `Snippet` objects, each with `line_number` (position in the original log) and `text` (the extracted snippet content).
+
+### `extract_python_tracebacks`
+
+Extracts Python tracebacks from the log, including chained exceptions.
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `max_traceback_len` | `int` | 2000 | Maximum character length per extracted traceback. |
+| `skip_patterns` | `list[str]` | `null` | List of regex patterns. Tracebacks matching any pattern are excluded. |
+| `context` | `int` | 0 | Number of lines to include before and after each traceback (0-50). |
+
+For both extractor tools, `context` follows grep's `-C` behavior: the requested
+number of surrounding log lines is included on each side when available. The
+length limit applies to the extracted snippet or traceback; context lines are
+additional, so the returned `text` can be longer than the limit. With context
+enabled, `line_number` points to the first returned line. Values outside 0-50
+are rejected.
+
+If a traceback is truncated, the extractor keeps its beginning and end with a
+marker when `max_traceback_len` permits; smaller limits keep only a prefix.
+Following context starts after the original traceback, without restoring its
+omitted middle.
+If a log line is split into chunks by `max_snippet_len`, each selected chunk
+keeps its own text when context is added. Neighboring lines do not replace it
+with the complete long line. Context boundaries follow the chunk's original
+source lines, including blank lines omitted from the rendered chunk.
 
 ### Size limits
 
