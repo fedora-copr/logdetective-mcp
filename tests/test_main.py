@@ -2,17 +2,20 @@ import gzip
 import http.client
 import io
 import urllib.error
+from unittest.mock import patch
 
 import pytest
-from unittest.mock import patch
 
 from logdetective_mcp.decompress import decompress_if_needed
 from logdetective_mcp.exceptions import DecompressionError, DownloadError
+from logdetective_mcp.extractor import get_chunks
 from logdetective_mcp.main import (
     Snippet,
+    _add_context,
     _download_with_limit,
     _read_log_source,
     extract_log_snippets,
+    extract_python_tracebacks,
 )
 
 valid_sources = [
@@ -176,6 +179,29 @@ class TestExtractLogSnippets:
         assert snippet.line_number == 1
         assert snippet.text == "ERROR something broke"
 
+    @patch("logdetective_mcp.main.DrainExtractor")
+    def test_context_adds_preceding_and_succeeding_lines(self, mock_extractor):
+        log = "before\nERROR something broke\nafter\nlast"
+        mock_extractor.return_value.return_value = [(2, "ERROR something broke")]
+        result = extract_log_snippets(log_text=log, context=1)
+        snippet = next(s for s in result if "ERROR" in s.text)
+        assert snippet.line_number == 1
+        assert snippet.text == "before\nERROR something broke\nafter"
+
+    @patch("logdetective_mcp.main.DrainExtractor")
+    def test_context_is_clipped_at_log_boundaries(self, mock_extractor):
+        log = "ERROR first\nINFO second"
+        mock_extractor.return_value.return_value = [(1, "ERROR first")]
+        result = extract_log_snippets(log_text=log, context=50)
+        snippet = next(s for s in result if "ERROR" in s.text)
+        assert snippet.line_number == 1
+        assert snippet.text == log
+
+    @pytest.mark.parametrize("context", [-1, 51])
+    def test_context_must_be_between_0_and_50(self, context):
+        with pytest.raises(ValueError, match="context must be between 0 and 50"):
+            extract_log_snippets(log_text="ERROR problem", context=context)
+
     def test_empty_input(self):
         with pytest.raises(ValueError):
             assert extract_log_snippets(log_text="")
@@ -216,3 +242,89 @@ class TestExtractLogSnippets:
         texts = [s.text for s in result]
         assert any("ERROR" in t for t in texts)
         assert any("WARN" in t for t in texts)
+
+
+class TestExtractPythonTracebacksTool:
+    def test_context_adds_lines_around_traceback(self):
+        log = (
+            "INFO before\n"
+            "Traceback (most recent call last):\n"
+            '  File "build.py", line 4, in run\n'
+            "ValueError: failed\n"
+            "INFO after\n"
+            "INFO later"
+        )
+        result = extract_python_tracebacks(log_text=log, context=1)
+        assert len(result) == 1
+        assert result[0].line_number == 1
+        assert result[0].text == "\n".join(log.splitlines()[:5])
+
+    def test_context_zero_preserves_traceback_output(self):
+        log = (
+            "INFO before\n"
+            "Traceback (most recent call last):\n"
+            '  File "build.py", line 4, in run\n'
+            "ValueError: failed\n"
+            "INFO after"
+        )
+        result = extract_python_tracebacks(log_text=log)
+        assert result[0].line_number == 2
+        assert result[0].text == "\n".join(log.splitlines()[1:4])
+
+    def test_truncated_traceback_keeps_limit_and_true_following_context(self):
+        frames = [f'  File "module_{i}.py", line {i}, in run' for i in range(30)]
+        log = "\n".join(
+            [
+                "INFO before",
+                "Traceback (most recent call last):",
+                *frames,
+                "ValueError: final failure",
+                "INFO after",
+                "INFO later",
+            ]
+        )
+        result = extract_python_tracebacks(
+            log_text=log, max_traceback_len=80, context=1
+        )
+        assert len(result) == 1
+        assert result[0].line_number == 1
+        assert result[0].text.startswith("INFO before\nTraceback")
+        assert "...<truncated>..." in result[0].text
+        assert "ValueError: final failure\nINFO after" in result[0].text
+        assert "INFO later" not in result[0].text
+        traceback_text = result[0].text.removeprefix("INFO before\n")
+        traceback_text = traceback_text.removesuffix("\nINFO after")
+        assert len(traceback_text) <= 80
+
+    def test_tiny_traceback_limit_keeps_prefix_and_following_context(self):
+        log = (
+            "before\nTraceback (most recent call last):\n"
+            "  File x\nValueError: bad\nafter"
+        )
+        result = extract_python_tracebacks(log_text=log, max_traceback_len=5, context=1)
+        assert result[0].text == "before\nTrace\nafter"
+
+
+class TestAddContext:
+    def test_context_uses_original_lines_after_omitted_blank_lines(self):
+        log = "before\nTraceback\nframe\n\nValueError\nafter\nlast"
+        snippets = [(2, "Traceback\nframe\nValueError")]
+        result = _add_context(log, snippets, context=1)
+        assert result == [(1, "before\nTraceback\nframe\n\nValueError\nafter")]
+
+    def test_split_chunks_remain_distinct_with_context(self):
+        long_line = "A" * 50 + "B" * 50 + "C" * 50
+        log = f"before\n{long_line}\nafter"
+        chunks = list(get_chunks(long_line, max_chunk_len=50))
+        snippets = [(2, chunk) for _, chunk in chunks if chunk]
+        result = _add_context(log, snippets, context=1)
+        assert result == [
+            (1, f"before\n{chunk}\nafter") for _, chunk in chunks if chunk
+        ]
+        assert all(long_line not in text for _, text in result)
+
+    def test_source_whitespace_does_not_expand_limited_chunk(self):
+        log = "before\nERROR" + " " * 100 + "\nafter"
+        snippets = [(2, "ERROR" + " " * 5)]
+        result = _add_context(log, snippets, context=1, max_core_len=10)
+        assert result == [(1, "before\nERROR     \nafter")]
