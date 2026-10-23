@@ -316,7 +316,7 @@ wheels = [
 
 [[package]]
 name = "logdetective-mcp"
-version = "0.6.0"
+version = "0.6.1"
 source = { editable = "." }
 dependencies = [
     { name = "drain3-improved" },
@@ -332,7 +332,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "drain3-improved", specifier = ">=0.10.0" },
-    { name = "mcp", specifier = ">=1.27.2" },
+    { name = "mcp", specifier = ">=1.27.2,<2.0.0" },
     { name = "pydantic", specifier = ">=2.13.4" },
 ]
 

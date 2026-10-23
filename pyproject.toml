@@ -1,6 +1,6 @@
 [project]
 name = "logdetective-mcp"
-version = "0.6.0"
+version = "0.6.1"
 description = "Log Detective MCP server"
 readme = "README.md"
 license = "Apache-2.0"
@@ -13,7 +13,7 @@ authors = [
   ]
 dependencies = [
     "drain3-improved>=0.10.0",
-    "mcp>=1.27.2",
+    "mcp>=1.27.2,<2.0.0",
     "pydantic>=2.13.4",
 ]
 classifiers = [
