@@ -16,7 +16,28 @@ from logdetective_mcp.decompress import (
 from logdetective_mcp.exceptions import DecompressionError, DownloadError
 from logdetective_mcp.extractor import DrainExtractor, PythonTracebackExtractor
 
-mcp = FastMCP("Log Detective")
+SOURCE_FIELDS = ("log_text", "log_path", "log_url")
+SOURCE_TOOL_NAMES = frozenset({"extract_log_snippets", "extract_python_tracebacks"})
+
+
+class LogDetectiveMCP(FastMCP):
+    """Advertise the source rule enforced by ``_read_log_source``."""
+
+    async def list_tools(self):
+        tools = await super().list_tools()
+        for tool in tools:
+            if tool.name not in SOURCE_TOOL_NAMES:
+                continue
+            # Each branch requires one nonempty source. ``oneOf`` rejects calls
+            # with no source or with multiple nonempty sources.
+            tool.inputSchema["oneOf"] = [
+                {"required": [field], "properties": {field: {"minLength": 1}}}
+                for field in SOURCE_FIELDS
+            ]
+        return tools
+
+
+mcp = LogDetectiveMCP("Log Detective")
 MAX_CONTEXT_LINES = 50
 
 
@@ -33,7 +54,7 @@ def _download_with_limit(url: str, max_bytes: int) -> bytes:
             URLs, or when the response exceeds *max_bytes*.
     """
     try:
-        with urllib.request.urlopen(url, timeout=30) as resp:  # noqa: S310
+        with urllib.request.urlopen(url, timeout=30) as resp:
             return read_chunks(
                 resp, compressed_size=0, max_bytes=max_bytes, max_ratio=1.0
             )
@@ -164,7 +185,7 @@ def extract_log_snippets(
     log_url: str = "",
     max_clusters: int = 8,
     max_snippet_len: int = 2000,
-    skip_patterns: list[str] = [],
+    skip_patterns: list[str] | None = None,
     context: Annotated[
         int,
         Field(
@@ -240,7 +261,7 @@ def extract_python_tracebacks(
     log_path: str = "",
     log_url: str = "",
     max_traceback_len: int = 2000,
-    skip_patterns: list[str] = [],
+    skip_patterns: list[str] | None = None,
     context: Annotated[
         int,
         Field(
