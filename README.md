@@ -72,16 +72,24 @@ Log content can be provided in three ways (exactly one must be used):
 | `log_path` | `str` | Path to a log file on the server's filesystem. |
 | `log_url` | `str` | HTTP(S) URL to fetch log content from. |
 
+The input schema for both tools uses `oneOf` to require exactly one nonempty
+source field. Omitted source fields and fields set to `""` do not count as a
+source. This matches the rule checked when a tool runs. The advertised tool
+definitions conform to the [MCP 2025-11-25 Tool schema](https://github.com/modelcontextprotocol/modelcontextprotocol/blob/2025-11-25/schema/2025-11-25/schema.json).
+
 Optional parameters:
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `max_clusters` | `int` | 8 | Maximum number of snippets to extract. |
 | `max_snippet_len` | `int` | 2000 | Maximum character length per snippet. |
-| `skip_patterns` | `list[str]` | `null` | List of regex patterns. Chunks matching any pattern are excluded before clustering. |
+| `skip_patterns` | `list[str] \| null` | `null` | List of regex patterns. Chunks matching any pattern are excluded before clustering. |
 | `context` | `int` | 0 | Number of lines to include before and after each snippet (0-50). |
 
-Returns a list of `Snippet` objects, each with `line_number` (position in the original log) and `text` (the extracted snippet content).
+Returns a list of `Snippet` objects, each with `line_number` (position in the
+original log) and `text` (the extracted snippet content). MCP structured output
+wraps this list as `{"result": [...]}`; the advertised output schema describes
+that object.
 
 ### `extract_python_tracebacks`
 
@@ -90,7 +98,7 @@ Extracts Python tracebacks from the log, including chained exceptions.
 | Parameter | Type | Default | Description |
 |---|---|---|---|
 | `max_traceback_len` | `int` | 2000 | Maximum character length per extracted traceback. |
-| `skip_patterns` | `list[str]` | `null` | List of regex patterns. Tracebacks matching any pattern are excluded. |
+| `skip_patterns` | `list[str] \| null` | `null` | List of regex patterns. Tracebacks matching any pattern are excluded. |
 | `context` | `int` | 0 | Number of lines to include before and after each traceback (0-50). |
 
 For both extractor tools, `context` follows grep's `-C` behavior: the requested
@@ -137,6 +145,21 @@ All changes to this repository must pass pre-commit checks and tests.
 
 ```sh
 uv run pytest tests/
+```
+
+To inspect the JSON schemas returned by the installed server, run the check
+script with the project's virtual environment. It starts the server over MCP
+stdio, validates both tool schemas and structured results, and compares the
+returned tool definitions with the files in `schemas/`:
+
+```sh
+.venv/bin/python scripts/check_mcp_schemas.py
+```
+
+After an intentional schema change, regenerate those files with:
+
+```sh
+.venv/bin/python scripts/check_mcp_schemas.py --write
 ```
 
 <!-- mcp-name: io.github.fedora-copr/logdetective-mcp -->

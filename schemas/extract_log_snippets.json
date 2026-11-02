@@ -1,0 +1,128 @@
+{
+  "name": "extract_log_snippets",
+  "description": "Extract representative log snippets using Drain3 clustering.\n\n    Analyzes log text by chunking it into logical messages, clustering\n    similar messages using the Drain algorithm, and returning one\n    representative snippet per cluster.\n\n    Exactly one of log_text, log_path, or log_url must be provided.\n\n    Downloaded inputs are limited to 100 MB.\n    Compressed files (.gz, .bz2, .xz, .zip, .tar, .tar.gz, .tar.bz2,\n    .tar.xz) are decompressed transparently. Archives must contain\n    exactly one file. Compression ratios above 100:1 are rejected.\n\n    Args:\n        log_text: Raw log text to analyze.\n        log_path: Path to a log file on disk.\n        log_url: HTTP(S) URL to fetch log content from.\n        max_clusters: Maximum number of clusters/snippets to extract.\n        max_snippet_len: Maximum character length per snippet chunk.\n        skip_patterns: Optional list of regex patterns.\n            Chunks matching any pattern are excluded before clustering.\n        context: Number of lines to include before and after each snippet (0-50).\n            These lines are additional to max_snippet_len. Split chunks retain\n            their extracted text instead of expanding to the whole source line.\n    ",
+  "inputSchema": {
+    "properties": {
+      "log_text": {
+        "default": "",
+        "title": "Log Text",
+        "type": "string"
+      },
+      "log_path": {
+        "default": "",
+        "title": "Log Path",
+        "type": "string"
+      },
+      "log_url": {
+        "default": "",
+        "title": "Log Url",
+        "type": "string"
+      },
+      "max_clusters": {
+        "default": 8,
+        "title": "Max Clusters",
+        "type": "integer"
+      },
+      "max_snippet_len": {
+        "default": 2000,
+        "title": "Max Snippet Len",
+        "type": "integer"
+      },
+      "skip_patterns": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Skip Patterns"
+      },
+      "context": {
+        "default": 0,
+        "description": "Number of surrounding lines to include.",
+        "maximum": 50,
+        "minimum": 0,
+        "title": "Context",
+        "type": "integer"
+      }
+    },
+    "title": "extract_log_snippetsArguments",
+    "type": "object",
+    "oneOf": [
+      {
+        "required": [
+          "log_text"
+        ],
+        "properties": {
+          "log_text": {
+            "minLength": 1
+          }
+        }
+      },
+      {
+        "required": [
+          "log_path"
+        ],
+        "properties": {
+          "log_path": {
+            "minLength": 1
+          }
+        }
+      },
+      {
+        "required": [
+          "log_url"
+        ],
+        "properties": {
+          "log_url": {
+            "minLength": 1
+          }
+        }
+      }
+    ]
+  },
+  "outputSchema": {
+    "$defs": {
+      "Snippet": {
+        "properties": {
+          "line_number": {
+            "description": "Line number in the original log.",
+            "title": "Line Number",
+            "type": "integer"
+          },
+          "text": {
+            "description": "Extracted log snippet text.",
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "line_number",
+          "text"
+        ],
+        "title": "Snippet",
+        "type": "object"
+      }
+    },
+    "properties": {
+      "result": {
+        "items": {
+          "$ref": "#/$defs/Snippet"
+        },
+        "title": "Result",
+        "type": "array"
+      }
+    },
+    "required": [
+      "result"
+    ],
+    "title": "extract_log_snippetsOutput",
+    "type": "object"
+  }
+}

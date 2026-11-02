@@ -1,3 +1,4 @@
+import asyncio
 import gzip
 import http.client
 import io
@@ -5,18 +6,63 @@ import urllib.error
 from unittest.mock import patch
 
 import pytest
+from jsonschema import Draft202012Validator
+from mcp.types import LATEST_PROTOCOL_VERSION
 
 from logdetective_mcp.decompress import decompress_if_needed
 from logdetective_mcp.exceptions import DecompressionError, DownloadError
 from logdetective_mcp.extractor import get_chunks
 from logdetective_mcp.main import (
+    LogDetectiveMCP,
     Snippet,
     _add_context,
     _download_with_limit,
     _read_log_source,
     extract_log_snippets,
     extract_python_tracebacks,
+    mcp,
 )
+
+
+@pytest.mark.parametrize(
+    "tool_name", ["extract_log_snippets", "extract_python_tracebacks"]
+)
+def test_tool_schemas_match_source_rule_and_structured_result(tool_name):
+    """The advertised input and output schemas match real tool behavior."""
+    assert LATEST_PROTOCOL_VERSION == "2025-11-25"
+    tools = {tool.name: tool for tool in asyncio.run(mcp.list_tools())}
+    tool = tools[tool_name]
+    assert tool.outputSchema
+    Draft202012Validator.check_schema(tool.inputSchema)
+    Draft202012Validator.check_schema(tool.outputSchema)
+
+    input_validator = Draft202012Validator(tool.inputSchema)
+    for field in ("log_text", "log_path", "log_url"):
+        assert input_validator.is_valid({field: "nonempty"})
+    assert input_validator.is_valid({"log_text": "ERROR failed", "log_path": ""})
+    for arguments in (
+        {},
+        {"log_text": ""},
+        {"log_text": "ERROR failed", "log_path": "/tmp/build.log"},
+    ):
+        assert not input_validator.is_valid(arguments)
+
+    _, structured_content = asyncio.run(
+        mcp.call_tool(tool_name, {"log_text": "ERROR failed"})
+    )
+    Draft202012Validator(tool.outputSchema).validate(structured_content)
+
+
+def test_source_rule_only_applies_to_extractors():
+    server = LogDetectiveMCP("Schema test")
+
+    @server.tool()
+    def unrelated(value: str) -> str:
+        return value
+
+    (tool,) = asyncio.run(server.list_tools())
+    assert "oneOf" not in tool.inputSchema
+
 
 valid_sources = [
     "/valid/path/to.log",
